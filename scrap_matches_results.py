@@ -15,49 +15,18 @@ import random
 from datetime import datetime
 import pandas as pd
 import os, errno
+from helper_functions import *
+import config
 
 
-# constants
-URL_ATP = 'http://www.atpworldtour.com'
-RESULTS = '/en/scores/results-archive'
+# Constants
+ATP_BSE_URL = 'http://www.atpworldtour.com'
+ATP_MATCHES_RESULTS_URL = '/en/scores/results-archive'
+
+PATH_TO_STORAGE_DIR = config.path_to_storage_dir
 
 
-def decorator_counter(func):
-    """Decorate a function and count the number of times a function is used."""
-    def wrapper(*args, **kargs):
-        wrapper.count += 1
-        res = func(*args, **kargs)
-        return res
-    wrapper.count = 0
-    return wrapper
-
-
-def decorator_exec_time(func):
-    """Decorate a function and compute total exec time."""
-    def wrapper(*args, **kargs):
-        start_time = time.time()
-        res = func(*args, **kargs)
-        duration = time.time() - start_time
-        print('It took {0} seconds'.format(duration))
-        return res
-    return wrapper
-
-
-def sleeper(alpha, beta):
-    """Stop execution for a random duration."""
-    time.sleep(random.gammavariate(alpha,beta))
-
-
-@decorator_counter
-@retry(wait_exponential_multiplier=1000, wait_exponential_max=10000)
-def get_soup(page):
-    """Get soup from an HTML page."""
-    html_page = requests.get(page, timeout=1).content
-    soup = BeautifulSoup(html_page, 'lxml')
-    return soup
-
-
-def get_years(page_results, limit_nb_years):
+def get_years(page_results, limit_year_start, limit_year_stop, limit_nb_years):
     """Extract urls containing rankings history (One url per week).
 
     - limit_nb_years controls max number of years we want to scrap
@@ -70,17 +39,20 @@ def get_years(page_results, limit_nb_years):
         find_all(name='li', attrs={'data-value': True, 'style': False})
     i = 0
     for w in years:
-        if (i >= limit_nb_years and limit_nb_years is not None):
+        if (i >= limit_nb_years and limit_nb_years != 0):
             print('break ', limit_nb_years)
             break
         else:
-            i += 1
             year = {}
             year['year'] = w.get('data-value')
             year['results_url'] = page_results + "?year=" + \
                 str(w.get('data-value'))
-            yield year
-
+            if (int(year['year']) < limit_year_start and limit_year_start !=0) or (int(year['year']) > limit_year_stop and limit_year_stop != 0)  :
+                print ('pass this year' + str(year['year']))
+                continue  # Matches results are only scrapped for requested years
+            else:
+                yield year
+                i += 1
 
 def get_tourneys(page_tourneys):
     """Extract information about tourneys for a given year."""
@@ -131,7 +103,7 @@ def get_tourney_results(page_tourney, tourney):
                         match['loser'] = ' '.join(m.find('td', class_='day-table-name').findNext('td', class_='day-table-name').a.string.split())
                         match['score'] = m.find('td', class_='day-table-score').a.text.strip()
                         if m.find('td', class_='day-table-score').a.get('href') is not None:  # No URL for Walkover
-                            match['stats_url'] = URL_ATP + m.find('td', class_='day-table-score').a.get('href')  # could be used to get detailed stats
+                            match['stats_url'] = ATP_BSE_URL + m.find('td', class_='day-table-score').a.get('href')  # could be used to get detailed stats
                         else:
                             match['stats_url'] = ''
                         result= {}
@@ -145,55 +117,44 @@ def get_tourney_results(page_tourney, tourney):
 
 
 @decorator_exec_time
-def build_matches_results_history(year_start=2010, year_stop=None, limit_nb_years=5):
+def build_matches_results_history(limit_year_start=2010, limit_year_stop=0, limit_nb_years=5):
     """For each year available on http://www.atpworldtour.com/en/scores/results-archive :
     build a .csv that contains all matches result (tourney description, winner, loser, score)
 
     - year_start and year_stop : control history start and stop. ATTENTION year_start < year_stop
-    - nb_years : control hustory depth
+    - nb_years : control history depth
     """
     # Number of Get Request on www.atpworldtour.com = nb_years * nb_yearly_touneys + 1 (to get years list)
     # Initialization
     header = ['name', 'winner', 'surface', 'round', 'loser', 'indoor_outdoor',
               'score', 'location', 'stats_url', 'results_url', 'start_date']  # CSV. columns names
-    i = 1
     try:
-        current_dir = './atp-matches-results-history/'
-        os.makedirs(current_dir)
+        storage_dir = PATH_TO_STORAGE_DIR
+        os.makedirs(storage_dir)
     except OSError as e:
         if e.errno != errno.EEXIST:
             raise
     try:
         print('try1')
-        for year in get_years(URL_ATP+RESULTS, limit_nb_years):
-            if (int(year['year']) < year_start and year_start is not None) or (int(year['year']) > year_stop and year_stop is not None)  :
-                print ('pass this year' + str(year['year']) + 'i is ' + str(i))
-                continue  # Matches results are only scrapped for requested years
-            #elif i > limit_nb_years and i is not None:
-            #    print('leaving ' + str(i))
-            #    break  # If enought years have been scrapped
-            else:
-                print('compute this year ' + str(year['year']) + 'i is ' + str(i))
-                #rows_list = []
-                current_file = current_dir + '/matches_results' + str(year['year'])+'.csv'
-                with open(current_file, 'w') as f:
-                    f_csv = csv.DictWriter(f, header)
-                    f_csv.writeheader()
-                    for tourney in get_tourneys(year['results_url']):  # For a given year, go through all tourneys
-                        try :
-                            gen_matches = get_tourney_results(URL_ATP + tourney['results_url'], tourney)
-                            f_csv.writerows(gen_matches)
-                            sleeper(3,1)
-                        except TypeError:
-                            print('drop ' + tourney['name'])
-                            continue
-
-            print('end i ' + str(i))
-            i += 1
+        for year in get_years(ATP_BSE_URL+ATP_MATCHES_RESULTS_URL, limit_year_start, limit_year_stop, limit_nb_years):
+            print('compute this year ' + str(year['year']))
+            #rows_list = []
+            current_file = storage_dir + '/matches_results' + str(year['year'])+'.csv'
+            with open(current_file, 'w') as f:
+                f_csv = csv.DictWriter(f, header)
+                f_csv.writeheader()
+                for tourney in get_tourneys(year['results_url']):  # For a given year, go through all tourneys
+                    try :
+                        gen_matches = get_tourney_results(ATP_BSE_URL + tourney['results_url'], tourney)
+                        f_csv.writerows(gen_matches)
+                        sleeper(3,1)
+                    except (TypeError, AttributeError):
+                        print('drop ' + tourney['name'])
+                        continue
     finally :
-        with open('./log-ATP-matches-results.log', 'w') as f:
-            f.write('run at {0} with {1} get requests scrap {2} years'.format(datetime.now().date(), get_soup.count, i))
+        with open(PATH_TO_STORAGE_DIR+ 'scrapping_matches_results.log', 'w') as f:
+            f.write('run at {0} with {1} get requests'.format(datetime.now().date(), get_soup.count))
 
 #%%
 
-build_matches_results_history(year_start=2002, year_stop=2015, limit_nb_years=None)
+build_matches_results_history(limit_year_start=2017, limit_year_stop=2017, limit_nb_years=2)
