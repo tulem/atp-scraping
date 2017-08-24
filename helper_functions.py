@@ -1,3 +1,14 @@
+#-*- coding: utf-8 -*-
+"""Scrap Tennis players weekly ranks on ATP.
+"""
+import requests
+from bs4 import BeautifulSoup
+import csv
+import time
+from retrying import retry
+import random
+
+
 def decorator_counter(func):
     """Decorate a function and count the number of times a function is used."""
     def wrapper(*args, **kargs):

@@ -6,15 +6,11 @@
 """
 
 # Imports
-import requests
-from bs4 import BeautifulSoup, element
+from bs4 import element
 import csv
-import time
-from retrying import retry
-import random
 from datetime import datetime
-import pandas as pd
-import os, errno
+import os
+import errno
 from helper_functions import *
 import config
 

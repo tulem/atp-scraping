@@ -7,24 +7,8 @@
 """
 
 # Imports
-import requests
-from bs4 import BeautifulSoup
-import csv
-import time
-from retrying import retry
-import random
-
-@retry(wait_exponential_multiplier=1000, wait_exponential_max=10000)
-def get_soup(page):
-    """Get soup from an HTML page."""
-    html_page = requests.get(page, timeout=1).content
-    soup = BeautifulSoup(html_page, 'lxml')
-    return soup
-
-
-def sleeper(alpha, beta):
-    """Stop execution for a random duration."""
-    time.sleep(random.gammavariate(alpha,beta))
+from helper_functions import *
+import config
 
 
 def get_page_weekly_rankings(page_rankings, depth=500):
@@ -66,16 +50,6 @@ def get_players_info(page):
         except Exception as e:
             print e  # coding=utf-8
             continue
-
-
-def decorator_exec_time(func):
-    """Decorate a function and compute total exec time."""
-    def wrapper(*args, **kargs):
-        start_time = time.time()
-        res = func(*args, **kargs)
-        duration = time.time() - start_time
-        print('It took {0} seconds'.format(duration))
-    return wrapper
 
 
 @decorator_exec_time
